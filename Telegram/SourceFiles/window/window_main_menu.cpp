@@ -87,6 +87,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_ayu_icons.h"
 #include "lang_auto.h"
 #include "ayu/ui/settings/settings_main.h"
+#include "ayu/plugins/plugins_ui.h"
 #include "styles/style_info.h"
 
 
@@ -845,6 +846,7 @@ void MainMenu::setupMenu() {
 	)->setClickedCallback([=] {
 		controller->showSettings();
 	});
+	AyuPlugins::AddMainMenuItems(_menu);
 
 	if (settings.showNightModeToggleInDrawer()) {
 

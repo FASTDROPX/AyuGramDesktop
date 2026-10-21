@@ -31,6 +31,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace MTP {
 namespace {
 
+PluginRequestFilter PluginFilter;
+
 constexpr auto kConfigBecomesOldIn = 2 * 60 * crl::time(1000);
 constexpr auto kConfigBecomesOldForBlockedIn = 8 * crl::time(1000);
 
@@ -1017,6 +1019,20 @@ void Instance::Private::sendRequest(
 		crl::time msCanWait,
 		bool needsLayer,
 		mtpRequestId afterRequestId) {
+	if (needsLayer && PluginFilter && QThread::currentThread() == _instance->thread()) {
+		const auto bodyStart = request->begin()
+			+ SerializedRequest::kMessageBodyPosition;
+		auto body = mtpBuffer(bodyStart, request->end());
+		const auto original = body;
+		if (!PluginFilter(requestId, body, callbacks)) {
+			return;
+		}
+		if (body != original && !body.isEmpty()) {
+			auto replaced = SerializedRequest::Prepare(body.size());
+			replaced->append(body);
+			request = std::move(replaced);
+		}
+	}
 	const auto session = getSession(shiftedDcId);
 
 	request->requestId = requestId;
@@ -2127,6 +2143,10 @@ void Instance::sendRequest(
 		msCanWait,
 		needsLayer,
 		afterRequestId);
+}
+
+void SetPluginRequestFilter(PluginRequestFilter filter) {
+	PluginFilter = std::move(filter);
 }
 
 void Instance::sendAnything(ShiftedDcId shiftedDcId, crl::time msCanWait) {

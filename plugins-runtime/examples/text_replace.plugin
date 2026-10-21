@@ -1,0 +1,65 @@
+from typing import Any, List
+
+from android_utils import copy_to_clipboard
+from base_plugin import BasePlugin, HookResult, HookStrategy, MenuItemData, MenuItemType
+from ui.settings import Header, Input, Selector, Switch, Text
+
+__id__ = "text_replace"
+__name__ = "Text Replace"
+__description__ = "Replaces shortcuts in outgoing messages (`.shrug` → ¯\\_(ツ)_/¯) and adds **Copy as JSON** to the message menu."
+__author__ = "AyuGram Desktop plugins"
+__version__ = "1.0"
+
+SHORTCUTS = {
+    ".shrug": "¯\\_(ツ)_/¯",
+    ".flip": "(╯°□°）╯︵ ┻━┻",
+    ".lenny": "( ͡° ͜ʖ ͡°)",
+}
+
+
+class TextReplacePlugin(BasePlugin):
+    def on_plugin_load(self):
+        self.add_on_send_message_hook()
+        self.add_menu_item(MenuItemData(
+            menu_type=MenuItemType.MESSAGE_CONTEXT_MENU,
+            text="Copy as JSON",
+            on_click=self.copy_json,
+            icon="msg_copy",
+        ))
+
+    def copy_json(self, context):
+        import json
+        message = context.get("message")
+        owner = message.messageOwner if message else None
+        copy_to_clipboard(json.dumps(owner.to_dict() if owner else {}, ensure_ascii=False, indent=2, default=str))
+
+    def create_settings(self) -> List[Any]:
+        return [
+            Header(text="Shortcuts"),
+            Switch(key="enabled", text="Replace shortcuts", default=True),
+            Selector(key="case", text="Letter case", default=0, items=["As typed", "UPPER", "lower"]),
+            Input(key="signature", text="Signature", default="", subtext="Added to the end of every message"),
+            Text(text="Shortcuts", subtext=", ".join(SHORTCUTS), create_sub_fragment=self.shortcuts_page),
+        ]
+
+    def shortcuts_page(self):
+        return [Header(text="Built-in shortcuts")] + [Text(text=k, subtext=v) for k, v in SHORTCUTS.items()]
+
+    def on_send_message_hook(self, account: int, params: Any) -> HookResult:
+        if not self.get_setting("enabled", True) or not isinstance(params.message, str):
+            return HookResult()
+        text = params.message
+        for key, value in SHORTCUTS.items():
+            text = text.replace(key, value)
+        case = self.get_setting("case", 0)
+        if case == 1:
+            text = text.upper()
+        elif case == 2:
+            text = text.lower()
+        signature = self.get_setting("signature", "")
+        if signature:
+            text = f"{text}\n\n{signature}"
+        if text == params.message:
+            return HookResult()
+        params.message = text
+        return HookResult(strategy=HookStrategy.MODIFY, params=params)

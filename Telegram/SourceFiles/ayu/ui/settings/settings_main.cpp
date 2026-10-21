@@ -16,6 +16,8 @@
 #include "ayu/ui/settings/settings_filters.h"
 #include "ayu/ui/settings/settings_general.h"
 #include "ayu/ui/settings/settings_other.h"
+#include "ayu/plugins/plugins_lang.h"
+#include "ayu/plugins/plugins_section.h"
 #include "core/version.h"
 #include "settings/settings_builder.h"
 #include "settings/settings_common.h"
@@ -129,6 +131,11 @@ void BuildCategories(SectionBuilder &builder) {
 		.title = tr::ayu_CategoryOther(),
 		.targetSection = AyuOther::Id(),
 		.icon = { &st::menuIconFave },
+	});
+	builder.addSectionButton({
+		.title = rpl::single(AyuPlugins::Tr("Plugins")),
+		.targetSection = AyuPluginsSection::Id(),
+		.icon = { &st::menuIconExperimental },
 	});
 }
 

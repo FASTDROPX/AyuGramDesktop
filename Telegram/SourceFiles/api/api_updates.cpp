@@ -76,6 +76,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 // AyuGram includes
 #include "ayu/ayu_settings.h"
 #include "ayu/ayu_worker.h"
+#include "ayu/plugins/plugins_hooks.h"
 
 
 namespace Api {
@@ -1490,6 +1491,15 @@ void Updates::applyUpdateNoPtsCheck(const MTPUpdate &update) {
 void Updates::applyUpdates(
 		const MTPUpdates &updates,
 		uint64 sentMessageRandomId) {
+	{
+		auto replaced = std::optional<MTPUpdates>();
+		if (!AyuPlugins::FilterUpdates(updates, replaced)) {
+			return;
+		} else if (replaced) {
+			applyUpdates(*replaced, sentMessageRandomId);
+			return;
+		}
+	}
 	const auto randomId = sentMessageRandomId;
 
 	switch (updates.type()) {
@@ -1615,6 +1625,15 @@ void Updates::applyUpdates(
 }
 
 void Updates::feedUpdate(const MTPUpdate &update) {
+	{
+		auto replaced = std::optional<MTPUpdate>();
+		if (!AyuPlugins::FilterUpdate(update, replaced)) {
+			return;
+		} else if (replaced) {
+			feedUpdate(*replaced);
+			return;
+		}
+	}
 	switch (update.type()) {
 
 	// New messages.

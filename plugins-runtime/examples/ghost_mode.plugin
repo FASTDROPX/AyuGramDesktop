@@ -1,0 +1,54 @@
+from typing import Any, List
+
+from base_plugin import BasePlugin, HookResult, HookStrategy, MenuItemData, MenuItemType
+from ui.bulletin import BulletinHelper
+from ui.settings import Divider, Header, Switch
+
+__id__ = "ghost_mode"
+__name__ = "Ghost Mode"
+__description__ = "Hides typing, read receipts and story views. A plain Android-style plugin: hooks on TLRPC requests."
+__author__ = "AyuGram Desktop plugins"
+__version__ = "1.0"
+__app_version__ = ">=12.5.1"
+
+
+class GhostModePlugin(BasePlugin):
+    def on_plugin_load(self):
+        self.add_hook("TL_messages_setTyping")
+        self.add_hook("TL_messages_readHistory")
+        self.add_hook("TL_channels_readHistory")
+        self.add_hook("TL_stories_readStories")
+        self.add_menu_item(MenuItemData(
+            menu_type=MenuItemType.DRAWER_MENU,
+            text="Ghost Mode",
+            on_click=self.toggle,
+            icon="msg_secret",
+        ))
+        self.logger.info("Ghost Mode loaded")
+
+    def toggle(self, context):
+        enabled = not self.get_setting("enabled", True)
+        self.set_setting("enabled", enabled, reload_settings=True)
+        BulletinHelper.show_info("Ghost Mode " + ("on" if enabled else "off"))
+
+    def create_settings(self) -> List[Any]:
+        return [
+            Header(text="Ghost Mode"),
+            Switch(key="enabled", text="Enabled", default=True, icon="msg_secret"),
+            Divider(),
+            Switch(key="typing", text="Don't send typing status", default=True),
+            Switch(key="read", text="Don't send read receipts", default=True,
+                   subtext="Chats stay unread for the other side"),
+            Switch(key="stories", text="Don't mark stories as viewed", default=True),
+        ]
+
+    def pre_request_hook(self, request_name: str, account: int, request: Any) -> HookResult:
+        if not self.get_setting("enabled", True):
+            return HookResult()
+        if request_name == "TL_messages_setTyping" and self.get_setting("typing", True):
+            return HookResult(strategy=HookStrategy.CANCEL)
+        if request_name in ("TL_messages_readHistory", "TL_channels_readHistory") and self.get_setting("read", True):
+            return HookResult(strategy=HookStrategy.CANCEL)
+        if request_name == "TL_stories_readStories" and self.get_setting("stories", True):
+            return HookResult(strategy=HookStrategy.CANCEL)
+        return HookResult()

@@ -28,6 +28,15 @@ using AuthKeyPtr = std::shared_ptr<AuthKey>;
 using AuthKeysList = std::vector<AuthKeyPtr>;
 enum class Environment : uchar;
 
+// AyuGram plugins: sees every API request before it is sent (main thread).
+// Returns false to drop the request. May replace the TL words in `body`
+// and wrap `callbacks` to see or change the response.
+using PluginRequestFilter = Fn<bool(
+	mtpRequestId requestId,
+	mtpBuffer &body,
+	ResponseHandler &callbacks)>;
+void SetPluginRequestFilter(PluginRequestFilter filter);
+
 class Instance : public QObject {
 	Q_OBJECT
 

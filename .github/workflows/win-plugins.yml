@@ -144,7 +144,9 @@ jobs:
           New-Item -ItemType Directory -Force $pkg | Out-Null
           Copy-Item "$out\AyuGram.exe" $pkg
           $runtime = "$env:TBUILD\$env:REPO_NAME\plugins-runtime"
-          if (Test-Path $runtime) { Copy-Item $runtime "$pkg\plugins-runtime" -Recurse }
+          Copy-Item $runtime "$pkg\plugins-runtime" -Recurse
+          Remove-Item "$pkg\plugins-runtime\tests" -Recurse -Force -ErrorAction SilentlyContinue
+          Copy-Item "$env:TBUILD\$env:REPO_NAME\Telegram\SourceFiles\mtproto\scheme\api.tl" "$pkg\plugins-runtime\api.tl"
           $zip = "$env:RUNNER_TEMP\python.zip"
           Invoke-WebRequest "https://www.python.org/ftp/python/$env:PYTHON_EMBED/python-$env:PYTHON_EMBED-embed-amd64.zip" -OutFile $zip
           Expand-Archive $zip -DestinationPath "$pkg\python"

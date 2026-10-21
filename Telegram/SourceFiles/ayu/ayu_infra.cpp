@@ -11,6 +11,7 @@
 #include "ayu/ayu_ui_settings.h"
 #include "ayu/ayu_worker.h"
 #include "ayu/data/ayu_database.h"
+#include "ayu/plugins/plugins_engine.h"
 #include "ayu/ui/ayu_logo.h"
 #include "features/translator/ayu_translator.h"
 #include "lang/lang_instance.h"
@@ -67,6 +68,10 @@ void initIcon() {
 #endif
 }
 
+void initPlugins() {
+	AyuPlugins::Engine::Instance().start();
+}
+
 void init() {
 	initLang();
 	initDatabase();
@@ -75,6 +80,7 @@ void init() {
 	initWorker();
 	initRCManager();
 	initTranslator();
+	initPlugins();
 }
 
 }

@@ -1,0 +1,158 @@
+# Windows x64 build of AyuGram Desktop with the exteraGram plugin engine.
+# Adapted from Telegram Desktop's .github/workflows/win.yml.
+#
+# The first run should be started by hand with "only_cache" = true: it builds the
+# third-party libraries (several hours) and stores them in the Actions cache.
+# Later runs restore the cache and only build AyuGram itself.
+
+name: Windows (plugins)
+
+on:
+  push:
+    branches: [plugins]
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'changelog.txt'
+      - 'LEGAL'
+      - 'LICENSE'
+  workflow_dispatch:
+    inputs:
+      only_cache:
+        description: 'Only build and cache the libraries'
+        type: boolean
+        default: false
+
+jobs:
+  windows:
+    name: Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 360
+
+    env:
+      ONLY_CACHE: ${{ inputs.only_cache && 'true' || 'false' }}
+      PREPARE_PATH: "Telegram/build/prepare/prepare.py"
+      PYTHON_EMBED: "3.13.15"
+
+    defaults:
+      run:
+        shell: cmd
+
+    steps:
+      - name: Prepare directories.
+        run: |
+          mkdir %userprofile%\TBuild\Libraries
+          mklink /d %GITHUB_WORKSPACE%\TBuild %userprofile%\TBuild
+          echo TBUILD=%GITHUB_WORKSPACE%\TBuild>>%GITHUB_ENV%
+          echo LibrariesPath=%GITHUB_WORKSPACE%\TBuild\Libraries\win64>>%GITHUB_ENV%
+
+      - name: Get repository name.
+        shell: bash
+        run: echo "REPO_NAME=${GITHUB_REPOSITORY##*/}" >> $GITHUB_ENV
+
+      - name: Clone.
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          path: ${{ env.TBUILD }}\${{ env.REPO_NAME }}
+
+      - name: First set up.
+        shell: bash
+        run: |
+          DOCPATH=$TBUILD/$REPO_NAME/docs/building-win.md
+          SDK="$(grep "SDK version" $DOCPATH | sed -r 's/.*\*\*(.*)\*\* SDK version.*/\1/')"
+          echo "SDK=$SDK" >> $GITHUB_ENV
+
+          sed -i '/CMAKE_${lang}_FLAGS_DEBUG_INIT/s/${_Zi}//' "$PROGRAMFILES"/CMake/share/cmake*/Modules/Platform/Windows-MSVC.cmake
+
+          echo "$(sha256sum $TBUILD/$REPO_NAME/$PREPARE_PATH | awk '{ print $1 }')" >> CACHE_KEY.txt
+          echo "$SDK" >> CACHE_KEY.txt
+          echo "CACHE_KEY=$(sha256sum CACHE_KEY.txt | awk '{ print $1 }')" >> $GITHUB_ENV
+
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI"
+
+      - uses: Eden-CI/msvc-dev-cmd@master
+        name: Native Tools Command Prompt.
+        with:
+          arch: x64
+          sdk: ${{ env.SDK }}
+          toolset: '14.44'
+
+      - name: NuGet sources.
+        run: |
+          nuget sources Disable -Name "Microsoft Visual Studio Offline Packages"
+          nuget sources Add -Source https://api.nuget.org/v3/index.json & exit 0
+
+      - name: ThirdParty cache.
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.TBUILD }}\ThirdParty
+          key: ${{ runner.OS }}-${{ runner.arch }}-third-party-${{ env.CACHE_KEY }}
+          restore-keys: ${{ runner.OS }}-${{ runner.arch }}-third-party-
+
+      - name: Libraries cache.
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ env.LibrariesPath }}\*
+            !${{ env.LibrariesPath }}\cache_keys
+            !${{ env.LibrariesPath }}\[qQ]t[_-]*
+            ${{ env.LibrariesPath }}\cache_keys\*
+            !${{ env.LibrariesPath }}\cache_keys\[qQ]t[_-]*
+          key: ${{ runner.OS }}-x64-libs-v2-${{ env.CACHE_KEY }}
+          restore-keys: ${{ runner.OS }}-x64-libs-v2-
+
+      - name: Qt cache.
+        uses: actions/cache@v6
+        with:
+          path: |
+            ${{ env.LibrariesPath }}\[qQ]t[_-]*
+            ${{ env.LibrariesPath }}\cache_keys\[qQ]t[_-]*
+          key: ${{ runner.OS }}-x64-qt-${{ env.CACHE_KEY }}
+          restore-keys: ${{ runner.OS }}-x64-qt-
+
+      - name: Libraries.
+        run: |
+          %TBUILD%\%REPO_NAME%\Telegram\build\prepare\win.bat skip-release silent
+
+      - name: Free up some disk space.
+        shell: bash
+        run: find $LibrariesPath '(' '(' ! '(' -name '*.lib' -o -name '*.a' -o -name '*.exe' -o -name '*.h' -o -name '*.hpp' -o -name '*.inc' -o -name '*.cmake' -o -name '*.pc' -o -path '*/include/*' -o -path '*/objects-*' -o -path '*/cache_keys/*' -o -path '*/patches/*' -o -path '*/nv-codec-headers/*' ')' -type f ')' -o -empty ')' -delete
+
+      - name: AyuGram build.
+        if: env.ONLY_CACHE == 'false'
+        run: |
+          cd %TBUILD%\%REPO_NAME%\Telegram
+
+          call configure.bat x64 ^
+          -D TDESKTOP_API_ID=2040 ^
+          -D TDESKTOP_API_HASH=b18441a1ff607e10a989891a5462e627 ^
+          -D CMAKE_CONFIGURATION_TYPES=Debug ^
+          -D CMAKE_MSVC_DEBUG_INFORMATION_FORMAT= ^
+          -D DESKTOP_APP_DISABLE_AUTOUPDATE=ON ^
+          -D DESKTOP_APP_DISABLE_CRASH_REPORTS=OFF
+
+          cmake --build ..\out --config Debug --parallel
+
+      - name: Package.
+        if: env.ONLY_CACHE == 'false'
+        shell: pwsh
+        run: |
+          $out = "$env:TBUILD\$env:REPO_NAME\out\Debug"
+          $pkg = "$env:GITHUB_WORKSPACE\artifact\AyuGram-plugins"
+          New-Item -ItemType Directory -Force $pkg | Out-Null
+          Copy-Item "$out\AyuGram.exe" $pkg
+          $runtime = "$env:TBUILD\$env:REPO_NAME\plugins-runtime"
+          if (Test-Path $runtime) { Copy-Item $runtime "$pkg\plugins-runtime" -Recurse }
+          $zip = "$env:RUNNER_TEMP\python.zip"
+          Invoke-WebRequest "https://www.python.org/ftp/python/$env:PYTHON_EMBED/python-$env:PYTHON_EMBED-embed-amd64.zip" -OutFile $zip
+          Expand-Archive $zip -DestinationPath "$pkg\python"
+
+      - uses: actions/upload-artifact@v7
+        name: Upload artifact.
+        if: env.ONLY_CACHE == 'false'
+        with:
+          name: AyuGram-plugins-x64-debug
+          path: artifact\
+          retention-days: 14
